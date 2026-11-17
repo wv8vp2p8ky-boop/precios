@@ -36,7 +36,7 @@ th{background:#eef2ef;font-size:12px;color:var(--muted)}
 </style>
 </head>
 <body>
-<header><h1>Lista de precios · GPacking</h1><small id="status">Modo local (este dispositivo)</small></header>
+<header><h1>Lista de precios · GPacking</h1><small id="status">Conectando…</small></header>
 <main>
 
   <section data-view="prod">
@@ -135,8 +135,9 @@ function toast(msg) {
 function setOcr(s) { $('#ocrStatus').textContent = s; }
 
 // Almacenamiento local: persiste en el dispositivo (localStorage de la app)
-// Lista de precios GPacking (semilla): id, nombre, detalle, costo
+// Lista de precios GPacking (semilla): id, nombre, detalle, precio de venta
 const SEED = [
+["g001","Abrillantador","bidón 10lt",3432],
 ["g002","Alcohol","1lt",149],
 ["g003","Alcohol","bidón 5lt",650],
 ["g004","Alcohol","bidón 10lt",950],
@@ -413,6 +414,7 @@ const SEED = [
 ];
 const LS = 'gp-prices-v1';
 const DB_URL = 'https://precios-gpacking-default-rtdb.firebaseio.com/gp.json';
+function setStatus(t) { const el = document.getElementById('status'); if (el) el.textContent = t; }
 const store = {
   items: {}, settings: {margin: 30}, history: [],
   saveItem(item) {
@@ -425,8 +427,9 @@ const store = {
   },
   saveMeta() { this.persist(); renderHistory(); },
   updatedAt: 0,
+  schema: 1,
   payload() {
-    return {items: this.items, settings: this.settings, history: this.history, updatedAt: this.updatedAt};
+    return {items: this.items, settings: this.settings, history: this.history, updatedAt: this.updatedAt, schema: this.schema};
   },
   saveLocal() {
     try { localStorage.setItem(LS, JSON.stringify(this.payload())); }
@@ -442,7 +445,8 @@ const store = {
     try {
       const r = await fetch(DB_URL, {method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(this.payload())});
       if (!r.ok) throw new Error('HTTP ' + r.status);
-    } catch (e) { toast('Sin conexión: se sincroniza más tarde'); }
+      setStatus('Sincronizado');
+    } catch (e) { setStatus('Sin conexión'); toast('Sin conexión: se sincroniza más tarde'); }
   },
   async pull() {
     let d;
@@ -450,7 +454,8 @@ const store = {
       const r = await fetch(DB_URL);
       if (!r.ok) return;
       d = await r.json();
-    } catch (e) { return; }
+    } catch (e) { setStatus('Sin conexión'); return; }
+    setStatus('Sincronizado');
     if (!d) { if (Object.keys(this.items).length) this.push(); return; }
     const remote = d.updatedAt || 0;
     if (remote > this.updatedAt) {
@@ -458,6 +463,7 @@ const store = {
       this.settings = {...this.settings, ...(d.settings || {})};
       this.history = d.history || [];
       this.updatedAt = remote;
+      this.schema = d.schema || 1;
       this.saveLocal();
       renderList(); renderHistory();
       $('#gMargin').value = this.settings.margin;
@@ -468,17 +474,33 @@ const store = {
   load() {
     try {
       const d = JSON.parse(localStorage.getItem(LS) || 'null');
-      if (d) { this.items = d.items || {}; this.settings = {...this.settings, ...(d.settings || {})}; this.history = d.history || []; this.updatedAt = d.updatedAt || 0; }
+      if (d) { this.items = d.items || {}; this.settings = {...this.settings, ...(d.settings || {})}; this.history = d.history || []; this.updatedAt = d.updatedAt || 0; this.schema = d.schema || 1; }
     } catch (e) {}
   },
   // Lista de precios GPacking: solo si no hay datos locales ni remotos
   seed() {
-    const m = this.settings.margin;
-    SEED.forEach(([id, name, detail, cost]) => {
-      this.items[id] = {id, name, detail, cost, margin: m, price: Math.round(cost * (1 + m / 100))};
-    });
+    SEED.forEach(([id, name, detail, price]) => this.addFromSeed(id, name, detail, price));
+    this.schema = 2;
     this.updatedAt = 0;
     this.saveLocal();
+  },
+  // El precio de venta es el del PDF; el costo se deriva con el margen actual
+  addFromSeed(id, name, detail, price) {
+    const m = this.settings.margin;
+    this.items[id] = {id, name, detail, cost: price / (1 + m / 100), margin: m, price};
+  },
+  // Migración única: los datos viejos guardaban el precio del PDF como costo
+  migrate() {
+    if (this.schema === 2) return;
+    Object.values(this.items).forEach(it => {
+      it.cost = it.cost / (1 + it.margin / 100);
+      it.price = Math.round(it.cost * (1 + it.margin / 100));
+    });
+    SEED.forEach(([id, name, detail, price]) => { if (!this.items[id]) this.addFromSeed(id, name, detail, price); });
+    this.schema = 2;
+    this.updatedAt = Date.now();
+    this.saveLocal();
+    this.push();
   }
 };
 function addLogEntry(product, from, to) {
@@ -748,6 +770,7 @@ async function boot() {
   store.load();
   await store.pull();
   if (!Object.keys(store.items).length) { store.seed(); store.push(); }
+  else store.migrate();
   renderList(); renderHistory();
   $('#gMargin').value = store.settings.margin;
   setInterval(() => store.pull(), 20000);
