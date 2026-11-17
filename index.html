@@ -45,7 +45,7 @@ th{background:#eef2ef;font-size:12px;color:var(--muted)}
 .doc-table td{letter-spacing:.04em}
 .doc-table th:nth-child(n+2),.doc-table td:nth-child(n+2){text-align:center}
 .doc-foot{position:absolute;left:36px;right:36px;bottom:28px;display:flex;justify-content:space-between;align-items:flex-end;font-size:12px;letter-spacing:.06em;line-height:1.6}
-.doc-logo{width:90px;height:90px;border-radius:50%;overflow:hidden}
+.doc-logo{width:130px;height:130px;border-radius:50%;overflow:hidden}
 .doc-logo img{width:100%;height:100%;object-fit:cover;display:block}
 @media print{
   @page{size:A4;margin:10mm}
@@ -55,7 +55,13 @@ th{background:#eef2ef;font-size:12px;color:var(--muted)}
   .doc-foot{position:fixed;bottom:10mm}
   .doc-watermark{position:fixed}
 }
+.doc-brand{display:flex;flex-direction:column;align-items:center;margin-bottom:18px;position:relative}
+.doc-brand img{width:150px;height:150px;border-radius:50%;object-fit:cover}
+.doc-name{font-family:Montserrat,Arial,sans-serif;font-weight:700;font-size:24px;letter-spacing:.3em;margin-top:6px;color:#111}
+.doc-tagline{font-family:Montserrat,Arial,sans-serif;font-size:11px;letter-spacing:.25em;color:#0f6a8a;margin-top:2px}
 </style>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap">
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 </head>
 <body>
 <header><h1>Lista de precios · GPacking</h1><small id="status">Conectando…</small></header>
@@ -124,7 +130,7 @@ th{background:#eef2ef;font-size:12px;color:var(--muted)}
   </section>
 
   <section data-view="exp" class="hidden">
-    <div class="row" style="margin-bottom:10px"><button id="btnPrint">Imprimir / Guardar PDF</button></div>
+    <div class="row" style="margin-bottom:10px"><button id="btnPrint">Exportar PDF</button></div>
     <p style="font-size:13px;color:#555">Muestra solo el precio de venta, con el diseño de la lista del PDF.</p>
     <div class="doc-wrap"><div id="doc" class="doc"></div></div>
   </section>
@@ -802,15 +808,93 @@ function buildExport() {
   const tr = rows.map(it => `<tr><td>${esc(it.name)}</td><td>${esc(it.detail || '')}</td><td>$${Math.round(it.price)}</td></tr>`).join('');
   $('#doc').innerHTML = `
     <div class="doc-watermark"><img src="${LOGO}" alt=""></div>
-    <div class="doc-head"><span>GPACKING</span><span>PACKAGING Y LIMPIEZA</span></div>
+    <div class="doc-brand"><img src="${LOGO}" alt=""><div class="doc-name">GPACKING</div><div class="doc-tagline">PACKAGING Y LIMPIEZA</div></div>
     <h1 class="doc-title">LISTA DE PRECIOS</h1>
     <table class="doc-table"><thead><tr><th>PRODUCTO</th><th>DETALLE</th><th>PRECIO</th></tr></thead><tbody>${tr}</tbody></table>
     <div class="doc-foot"><div>092 206 960<br>gpackingeinsumos<br>j.pino62@gmail.com<br>Canelones 1599 - Mvd</div><div class="doc-logo"><img src="${LOGO}" alt=""></div></div>`;
 }
 function printCatalog() {
   buildExport();
-  if (window.AndroidBridge && AndroidBridge.printPage) AndroidBridge.printPage();
-  else window.print();
+  if (window.AndroidBridge && AndroidBridge.printPage) return AndroidBridge.printPage();
+  exportPdf();
+}
+// Genera el PDF con el diseño de la lista. En iPhone se abre el menú de compartir.
+async function exportPdf() {
+  if (!window.jspdf) return toast('No se pudo cargar el generador de PDF. Revisá la conexión.');
+  const {jsPDF} = window.jspdf;
+  const pdf = new jsPDF({unit: 'mm', format: 'a4'});
+  const W = 210, H = 297, M = 14;
+  const cols = [{w: 92, a: 'left'}, {w: 50, a: 'center'}, {w: 36, a: 'center'}];
+  const tableW = cols.reduce((s, c) => s + c.w, 0);
+  const x0 = (W - tableW) / 2, rowH = 7;
+  const rows = Object.values(store.items)
+    .sort((a, b) => a.name.localeCompare(b.name, 'es') || (a.detail || '').localeCompare(b.detail || '', 'es'));
+  const drawWatermark = () => {
+    pdf.setGState(new pdf.GState({opacity: 0.12}));
+    pdf.addImage(LOGO, 'JPEG', W / 2 - 60, 95, 120, 120);
+    pdf.setGState(new pdf.GState({opacity: 1}));
+  };
+  const drawFooter = () => {
+    pdf.setFont('helvetica', 'normal'); pdf.setFontSize(8); pdf.setTextColor(17);
+    ['092 206 960', 'gpackingeinsumos', 'j.pino62@gmail.com', 'Canelones 1599 - Mvd']
+      .forEach((t, i) => pdf.text(t, M, H - 30 + i * 4.5));
+    pdf.addImage(LOGO, 'JPEG', W - M - 30, H - 42, 30, 30);
+  };
+  const drawHeader = yy => {
+    pdf.setFillColor(219, 234, 245); pdf.setDrawColor(17); pdf.setLineWidth(0.2);
+    let x = x0;
+    cols.forEach((c, i) => {
+      pdf.rect(x, yy, c.w, rowH, 'FD');
+      pdf.setFont('helvetica', 'bold'); pdf.setFontSize(8); pdf.setTextColor(17);
+      pdf.text(['PRODUCTO', 'DETALLE', 'PRECIO'][i], x + c.w / 2, yy + 4.7, {align: 'center'});
+      x += c.w;
+    });
+  };
+  let page = 0;
+  const newPage = () => {
+    if (page) pdf.addPage();
+    page++;
+    drawWatermark(); drawFooter();
+    let yy = 14;
+    if (page === 1) {
+      pdf.addImage(LOGO, 'JPEG', W / 2 - 20, 8, 40, 40);
+      pdf.setFont('helvetica', 'bold'); pdf.setFontSize(16); pdf.setTextColor(17);
+      pdf.text('GPACKING', W / 2, 57, {align: 'center', charSpace: 3});
+      pdf.setFont('helvetica', 'normal'); pdf.setFontSize(8); pdf.setTextColor(15, 106, 138);
+      pdf.text('PACKAGING Y LIMPIEZA', W / 2, 63, {align: 'center', charSpace: 2});
+      pdf.setFontSize(20); pdf.setTextColor(17);
+      pdf.text('LISTA DE PRECIOS', W / 2, 80, {align: 'center', charSpace: 3});
+      yy = 88;
+    }
+    drawHeader(yy);
+    return yy + rowH;
+  };
+  let y = newPage();
+  pdf.setFont('helvetica', 'normal'); pdf.setFontSize(9); pdf.setTextColor(17);
+  pdf.setDrawColor(17); pdf.setLineWidth(0.2);
+  rows.forEach(it => {
+    if (y + rowH > H - 50) { y = newPage(); pdf.setFont('helvetica', 'normal'); pdf.setFontSize(9); }
+    const vals = [it.name, it.detail || '', '$' + Math.round(it.price)];
+    let x = x0;
+    cols.forEach((c, i) => {
+      pdf.rect(x, y, c.w, rowH);
+      const tx = c.a === 'center' ? x + c.w / 2 : x + 2;
+      pdf.text(String(vals[i]), tx, y + 4.7, {align: c.a, maxWidth: c.w - 4});
+      x += c.w;
+    });
+    y += rowH;
+  });
+  const name = 'Lista de precios GPacking.pdf';
+  const blob = pdf.output('blob');
+  const file = new File([blob], name, {type: 'application/pdf'});
+  try {
+    if (navigator.canShare && navigator.canShare({files: [file]})) {
+      await navigator.share({files: [file], title: 'Lista de precios GPacking'});
+      return;
+    }
+  } catch (e) { if (e.name === 'AbortError') return; }
+  if (/iPhone|iPad|Android/i.test(navigator.userAgent)) window.open(URL.createObjectURL(blob));
+  else pdf.save(name);
 }
 $('#btnPrint').addEventListener('click', printCatalog);
 document.querySelector('[data-go="exp"]').addEventListener('click', buildExport);
