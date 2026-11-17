@@ -829,6 +829,13 @@ async function exportPdf() {
   const x0 = (W - tableW) / 2, rowH = 7;
   const rows = Object.values(store.items)
     .sort((a, b) => a.name.localeCompare(b.name, 'es') || (a.detail || '').localeCompare(b.detail || '', 'es'));
+  // Texto centrado con espaciado entre letras (jsPDF no lo cuenta al centrar)
+  const ctext = (t, y, size, sp) => {
+    pdf.setFontSize(size); pdf.setCharSpace(sp);
+    const w = pdf.getTextWidth(t) + (t.length - 1) * sp;
+    pdf.text(t, W / 2 - w / 2, y);
+    pdf.setCharSpace(0);
+  };
   const drawWatermark = () => {
     pdf.setGState(new pdf.GState({opacity: 0.12}));
     pdf.addImage(LOGO, 'JPEG', W / 2 - 60, 95, 120, 120);
@@ -844,7 +851,7 @@ async function exportPdf() {
     pdf.setFillColor(219, 234, 245); pdf.setDrawColor(17); pdf.setLineWidth(0.2);
     let x = x0;
     cols.forEach((c, i) => {
-      pdf.rect(x, yy, c.w, rowH, 'FD');
+      pdf.setFillColor(219, 234, 245); pdf.rect(x, yy, c.w, rowH, 'FD');
       pdf.setFont('helvetica', 'bold'); pdf.setFontSize(8); pdf.setTextColor(17);
       pdf.text(['PRODUCTO', 'DETALLE', 'PRECIO'][i], x + c.w / 2, yy + 4.7, {align: 'center'});
       x += c.w;
@@ -858,12 +865,12 @@ async function exportPdf() {
     let yy = 14;
     if (page === 1) {
       pdf.addImage(LOGO, 'JPEG', W / 2 - 20, 8, 40, 40);
-      pdf.setFont('helvetica', 'bold'); pdf.setFontSize(16); pdf.setTextColor(17);
-      pdf.text('GPACKING', W / 2, 57, {align: 'center', charSpace: 3});
-      pdf.setFont('helvetica', 'normal'); pdf.setFontSize(8); pdf.setTextColor(15, 106, 138);
-      pdf.text('PACKAGING Y LIMPIEZA', W / 2, 63, {align: 'center', charSpace: 2});
-      pdf.setFontSize(20); pdf.setTextColor(17);
-      pdf.text('LISTA DE PRECIOS', W / 2, 80, {align: 'center', charSpace: 3});
+      pdf.setFont('helvetica', 'bold'); pdf.setTextColor(17);
+      ctext('GPACKING', 57, 16, 3);
+      pdf.setFont('helvetica', 'normal'); pdf.setTextColor(15, 106, 138);
+      ctext('PACKAGING Y LIMPIEZA', 63, 8, 2);
+      pdf.setTextColor(17);
+      ctext('LISTA DE PRECIOS', 80, 20, 3);
       yy = 88;
     }
     drawHeader(yy);
