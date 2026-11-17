@@ -1,0 +1,759 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Precios GPacking</title>
+<style>
+:root{--bg:#f6f7f5;--card:#fff;--ink:#1d2320;--muted:#6b7570;--brand:#2f7d6d;--line:#e2e6e3;--warn:#b5651d}
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--ink);padding-bottom:84px}
+header{background:var(--brand);color:#fff;padding:14px 16px;position:sticky;top:0;z-index:5}
+header h1{font-size:18px;margin:0}
+header small{opacity:.9;font-size:12px}
+main{padding:12px}
+nav{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid var(--line);display:flex;z-index:6}
+nav button{flex:1;padding:12px 4px;border:0;background:none;font:inherit;font-size:14px;color:var(--muted)}
+nav button.on{color:var(--brand);font-weight:600}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+input,select,textarea{font:inherit;padding:10px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink);width:100%}
+input[type=checkbox]{width:auto}
+input.num{width:96px}
+button.btn{font:inherit;padding:10px 14px;border:0;border-radius:8px;background:var(--brand);color:#fff;font-weight:600}
+button.ghost{background:#eef2ef;color:var(--ink)}
+.name{font-weight:600}
+.muted{color:var(--muted);font-size:13px}
+.price{font-size:20px;font-weight:700;color:var(--brand);white-space:nowrap}
+.grow{flex:1;min-width:0}
+.hidden{display:none!important}
+label{font-size:13px;color:var(--muted)}
+textarea{min-height:120px;font-family:ui-monospace,Menlo,monospace;font-size:13px}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{padding:8px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+th{background:#eef2ef;font-size:12px;color:var(--muted)}
+.toast{position:fixed;left:12px;right:12px;bottom:76px;background:#1d2320;color:#fff;padding:10px 12px;border-radius:10px;display:none;font-size:14px;z-index:9}
+</style>
+</head>
+<body>
+<header><h1>Lista de precios · GPacking</h1><small id="status">Modo local (este dispositivo)</small></header>
+<main>
+
+  <section data-view="prod">
+    <div class="card">
+      <input id="search" placeholder="Buscar producto…">
+      <div class="row" style="margin-top:10px">
+        <span class="muted grow" id="count"></span>
+        <label>Margen general %</label>
+        <input id="gMargin" class="num" type="number" step="0.1" placeholder="%">
+        <button class="btn ghost" id="btnApplyAll">Aplicar</button>
+      </div>
+      <div class="row hidden" id="confirmBox" style="margin-top:10px">
+        <span class="grow muted">¿Aplicar ese margen a todos los productos?</span>
+        <button class="btn" id="btnConfirmAll">Sí, aplicar</button>
+        <button class="btn ghost" id="btnCancelAll">No</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <button class="btn ghost" id="btnAdd" style="width:100%">+ Agregar producto</button>
+      <div id="addBox" class="hidden" style="margin-top:10px">
+        <input id="nName" placeholder="Producto" style="margin-bottom:8px">
+        <input id="nDetail" placeholder="Detalle (tamaño, presentación)" style="margin-bottom:8px">
+        <div class="row">
+          <label>Costo $ <input class="num" id="nCost" type="number" step="0.01"></label>
+          <label>Margen % <input class="num" id="nMargin" type="number" step="0.1"></label>
+          <button class="btn" id="btnSaveNew" style="margin-left:auto">Guardar</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="list"></div>
+  </section>
+
+  <section data-view="imp" class="hidden">
+    <div class="card">
+      <div class="name">1. Foto de la factura o de la lista</div>
+      <p class="muted">Sacá la foto con buena luz y que se vea toda la tabla. La app intenta leer los renglones y después vos revisás antes de guardar.</p>
+      <input type="file" accept="image/*" id="photo">
+      <div id="ocrStatus" class="muted" style="margin-top:8px"></div>
+    </div>
+    <div class="card">
+      <div class="name">2. O pegar texto</div>
+      <p class="muted">Una línea por producto: Producto;Detalle;Costo. Si el producto ya existe, se actualiza su costo.</p>
+      <textarea id="paste" placeholder="Bolsa residuo negra;x kilo;118"></textarea>
+      <button class="btn" id="btnParse" style="margin-top:8px;width:100%">Revisar líneas</button>
+    </div>
+    <div id="review"></div>
+  </section>
+
+  <section data-view="plan" class="hidden">
+    <div class="card">
+      <input id="psearch" placeholder="Buscar en la plantilla…">
+      <div class="row" style="margin-top:10px">
+        <span class="muted grow" id="pcount"></span>
+        <button class="btn" id="btnCsv">Descargar CSV</button>
+        <button class="btn ghost" id="btnCopy">Copiar</button>
+      </div>
+    </div>
+    <div class="card" style="overflow-x:auto;padding:0">
+      <table id="ptable"></table>
+    </div>
+  </section>
+
+  <section data-view="hist" class="hidden">
+    <div id="hist"></div>
+  </section>
+
+</main>
+
+<nav>
+  <button class="on" data-go="prod">Productos</button>
+  <button data-go="imp">Importar</button>
+  <button data-go="plan">Plantilla</button>
+  <button data-go="hist">Historial</button>
+</nav>
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt = n => Number(n || 0).toLocaleString('es-UY', {maximumFractionDigits: 2});
+const calc = (cost, m) => Math.round(Number(cost) * (1 + Number(m) / 100));
+const uid = () => 'i' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+const norm = s => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(w => w.length > 1);
+function parseNum(s) {
+  s = String(s).replace(/\$/g, '').replace(/\s/g, '');
+  if (/,\d{1,2}$/.test(s)) s = s.replace(/\./g, '').replace(',', '.');
+  else s = s.replace(/,/g, '');
+  return parseFloat(s);
+}
+function toast(msg) {
+  const t = $('#toast'); t.textContent = msg; t.style.display = 'block';
+  clearTimeout(toast.t); toast.t = setTimeout(() => t.style.display = 'none', 3000);
+}
+function setOcr(s) { $('#ocrStatus').textContent = s; }
+
+// Almacenamiento local: persiste en el dispositivo (localStorage de la app)
+// Lista de precios GPacking (semilla): id, nombre, detalle, costo
+const SEED = [
+["g002","Alcohol","1lt",149],
+["g003","Alcohol","bidón 5lt",650],
+["g004","Alcohol","bidón 10lt",950],
+["g005","Alcohol en gel","bidón 5lt",775],
+["g006","Amonio","bidón 5lt",420],
+["g007","Cera","1lt",315],
+["g008","Cera al agua/blanca/neg","bidón 5lt",510],
+["g009","Crema multiuso Cif","750g",180],
+["g010","Crema multiuso Júpiter","375g",94],
+["g011","Desengrasante","bidón 5lt",644],
+["g012","Deter. biodegradable","bidón 5lt",225],
+["g013","Detergente concentrado","bidón 5lt",198],
+["g014","Hipoclorito","bidón 5lt",115],
+["g015","Lavandina en gel","700ml",190],
+["g016","Lavavajillas","10lt",1675],
+["g017","Limpia horno Júpiter","360g",145],
+["g018","Limpia horno Sapolio","360g",245],
+["g019","Limpia vidrio c/gatillo","500ml",120],
+["g020","Limpia vidrio","1lt",95],
+["g021","Limpia vidrio","bidón 3lt",270],
+["g022","Limpiador multiuso","Fabuloso 2lt",203],
+["g023","Limpiador multiuso ECO","bidón 5lt",160],
+["g024","Limpiador multiuso PRO","bidón 5lt",314],
+["g025","Lustramueble","360g",177],
+["g026","Lustramueble c/gatillo","480ml",287],
+["g027","Saca sarro","500ml",180],
+["g028","Soda cáustica líquida","1lt",210],
+["g029","Vinagre de alcohol","3lt",345],
+["g030","Aromatizante ambiente","spry Saphirus",277],
+["g031","Aromatizante ambiente","varillas Saphirus",260],
+["g032","Aromatizante textil","250ml",196],
+["g033","Desinfectante de amb.","spry 360ml",136],
+["g034","Desodorante ambiente","Júpiter 360ml",85],
+["g035","Desodorante ambiente","Sapolio 360ml",105],
+["g036","Limpia alfombras y tap.","Júpiter 360ml",128],
+["g037","Jabón para manos","1lt",115],
+["g038","Jabón para manos","bidón 5lt",565],
+["g039","Jabón en barra CONEJO","",53],
+["g040","Jabón en barra DOVE","",73],
+["g041","Jabón para ropa","bidón 3lt",290],
+["g042","Jabón para ropa","bidón 5lt",475],
+["g043","Suavizante ropa","bidón 3lt",180],
+["g044","Suavizante ropa","bidón 5lt",250],
+["g045","Balde negro 10lt","",145],
+["g046","Balde transparente 8,5lt","",228],
+["g047","Balde oval c/escurridor","14lt",554],
+["g048","Basurero 10lt","tapa vaivén",280],
+["g049","Basurero slim 15lt","",682],
+["g050","Basurero slim 40lt","",1280],
+["g051","Basurero 50lt","",1938],
+["g052","Basurero 60lt","",1115],
+["g053","Basurero slim 70lt","",2109],
+["g054","Bolsa residuo negra","x kilo",118],
+["g055","Bolsa residuo transp.","x kilo",168],
+["g056","Rollo bolsa 50x62","rollo x 100u",290],
+["g057","Rollo bolsa 70x100","rollo x 10u",92],
+["g058","Escoba doble barrido","",255],
+["g059","Escoba económica","",100],
+["g060","Escoba de exterior","+ pala",280],
+["g061","Escobillón chico","",168],
+["g062","Escobillón grande","",800],
+["g063","Lampazo eco","",150],
+["g064","Lampazo pro","30cm",224],
+["g065","Lampazo pro","40cm",295],
+["g066","Lampazo vidrio eco","",150],
+["g067","Lampazo vidrio pro","",663],
+["g068","Pala eco","",160],
+["g069","Pala pro","",290],
+["g070","Pala recolectora","",520],
+["g071","Rollo aluminio","30x100mt",694],
+["g072","Rollo aluminio","45x150mt",1580],
+["g073","Rollo film","38x300mt",367],
+["g074","Rollo film","38x600mt",665],
+["g075","Rollo film","45x600mt",890],
+["g076","Rollo papel manteca","40cm x 20mt",620],
+["g077","Ballerina","",32],
+["g078","Esponja aluminio","x 10",67],
+["g079","Esponja de bronce","",54],
+["g080","Esponja de fibra","pack x 3",114],
+["g081","Esponja de metal","",48],
+["g082","Franela naranja","30x40",38],
+["g083","Mopa","190g",225],
+["g084","Mopa","340g",630],
+["g085","Paño microfibra","pack x 3",160],
+["g086","Paño microfibra","40x40",55],
+["g087","Paño microfibra","50x55",75],
+["g088","Paño microfibra vidrio","",110],
+["g089","Paño de piso G","",65],
+["g090","Rejilla","",38],
+["g091","Rollo fibra verde","",538],
+["g092","Guantes de goma","7/8/9/10",85],
+["g093","Guantes de goma","7,5/8,5/9,5",160],
+["g094","Guantes de látex","talle S",190],
+["g095","Guantes de nitrilo","del S al XL / caja x 100",248],
+["g096","Guantes de nitrilo PLUS","M y L / caja x 100",275],
+["g097","Guantes de nylon","",90],
+["g098","Papel higiénico hogar","Clara x 16",295],
+["g099","Papel higiénico ECO","500mt / funda x 8",944],
+["g100","Papel higiénico Elite","500mt / funda x 4",980],
+["g101","Paño toalla MAXWIPE","88 paños absorbentes",875],
+["g102","Servilleta BOB","20x23cm / 100u",40],
+["g103","Servilleta BOB","funda x 18 paquetes",720],
+["g104","Servilleta Elite cocktail","20x20cm / 200u",150],
+["g105","Servilleta Elite cocktail","caja x 2.400u",1475],
+["g106","Servilleta Elite cocktail","30x30cm / 200u",175],
+["g107","Servilleta Elite cocktail","caja x 2.000u",1200],
+["g108","Servilleta Vipp","22x22cm / 50u",40],
+["g109","Servilleta Vipp","caja x 2.000u",700],
+["g110","Servilleta Vipp","30x30cm / 50u",4],
+["g111","Servilleta Vipp","caja x 2.000u",1110],
+["g112","Servilleta Vipp","interfoliada / caja x 5.000u",619],
+["g113","Servilleta Doble Punto","",2300],
+["g114","Toalla de cocina ECO","200mt x 6 rollos",1080],
+["g115","Toalla de cocina ELITE","150mt",320],
+["g116","Toalla de cocina MILI","2 rollos de 100 toallas c/u",100],
+["g117","Toalla interfoliada PAMO","1000u",200],
+["g118","Bizcocho 1/4k","x kg",168],
+["g119","Bizcocho 1/2k","x kg",151],
+["g120","Bizcocho 1k","x kg",149],
+["g121","Camiseta transparente","pack x600",500],
+["g122","Camiseta compostable","pack x 50",157.5],
+["g123","Camiseta reutilizable","100u",770],
+["g124","Delivery de papel MC6","22x33x13",5.7],
+["g125","Delivery de papel MC7","28x28x15",6.4],
+["g126","Delivery de papel MC8","28x39x15",7.9],
+["g127","Empanada chica","x kg",169],
+["g128","Empanada grande","x kg",183],
+["g129","Rollo 12x20","x 1000",220],
+["g130","Rollo 16x24","x 1000",294],
+["g131","Rollo 20x30","x 1000",245],
+["g132","Rollo 35x50","x kg",214],
+["g133","Rollo 40x60","x kg",214],
+["g134","Rollo separador HOJAS","x 1000",220],
+["g135","Rollo UNISOL 35x50","bolsa verdulería",442],
+["g136","Transp. ALTA en plano","x kg",240],
+["g137","Transparente PP","x kg",288],
+["g138","Bandeja aluminio c/t D5","1150ml / caja x 100u",1250],
+["g139","Bandeja aluminio c/t D6","500ml / caja x 100u",700],
+["g140","Bandeja aluminio c/t D7","700ml / caja x 100u",980],
+["g141","Bandeja aluminio c/t D8","1500ml / caja x 100u",1680],
+["g142","Bandeja cartón N1","",3.6],
+["g143","Bandeja cartón N2","14x18",4.3],
+["g144","Bandeja cartón N3","17x21",5.63],
+["g145","Bandeja cartón N4","18x24",5.8],
+["g146","Bandeja cartón N5","20x26",8.54],
+["g147","Band. cartón fuente N1","",5],
+["g148","Band. c.microcorru N0","10x10x3",2.7],
+["g149","Band. c.microcorru N1","10x14x3",3],
+["g150","Band. c.microcorru N2","14x10x3",3],
+["g151","Band. c.microcorru N3","13x18x3",4.2],
+["g152","Band. c.microcorru N4","13x20x3",3.9],
+["g153","Band. c.microcorru N5","17x23x3",4.4],
+["g154","Disco espuma 18cm","",1.9],
+["g155","Disco espuma 25cm","",3],
+["g156","Disco espuma 28cm","",4.5],
+["g157","Disco espuma 30cm","",4.8],
+["g158","Bandeja espuma 01","",1.3],
+["g159","Bandeja espuma 02","unidad / funda x 200u",3],
+["g160","Bandeja espuma 03","unidad / funda x 200u",4],
+["g161","Bandeja espuma 08","unidad / funda x 200u",5],
+["g162","Bandeja espuma 21","unidad / funda x 200u",2.5],
+["g163","Bandeja espuma 650","",13],
+["g164","Bandeja espuma 690","",32],
+["g165","Bandeja espuma 2F","unidad / funda x 200u",4],
+["g166","Bandeja espuma JL1","funda x 200u",1320],
+["g167","Bandeja espuma L1","funda x 200u",2800],
+["g168","Bandeja espuma S1","funda x 200u",1720],
+["g169","Bandeja esp. Marmita","funda x 100u",710],
+["g170","Bandeja plástica 101","100u",210],
+["g171","Tapa bandeja p. 101","100u",190],
+["g172","Bandeja plástica 103","100u",385],
+["g173","Bandeja plástica 105","100u",560],
+["g174","Bandeja plástica 107","100u",800],
+["g175","Bandeja plástica c/t 142","50u",400],
+["g176","Bandeja plástica c/t 143","50u",600],
+["g177","Bandeja plástica c/t 145","50u",1500],
+["g178","Caja masa mini","",9.7],
+["g179","Caja masa 1/4k","",13.8],
+["g180","Caja masa 1/2k","",14.9],
+["g181","Caja masa 1k","",21.5],
+["g182","Caja masa 1,5k","",23],
+["g183","Caja chivito p/1","",18],
+["g184","Caja chivito p/2","",19.6],
+["g185","Caja pizza 1/2mt","",14.3],
+["g186","Caja pizza 1mt","",20.2],
+["g187","Caja pizza 23x23","",13.5],
+["g188","Caja pizza 28x28 blanca","",17.5],
+["g189","Caja pizza 33x33 blanca","",21],
+["g190","Caja pizza 33x33 marrón","",15],
+["g191","Caja pizza 42x42","",25],
+["g192","Caja torta 30x30x12","",57],
+["g193","Casquete nº55","1000u",350],
+["g194","Casquete nº59","1000u",385],
+["g195","Casquete nº62","1000u",385],
+["g196","Casquete nº69","1000u",800],
+["g197","Vaso espuma 4oz","20u",39],
+["g198","Vaso espuma 6oz","20u",44],
+["g199","Vaso espuma 8oz","20u",54],
+["g200","Vaso espuma 10oz","20u",66],
+["g201","Vaso espuma 12oz","20u",68],
+["g202","Tapa vaso espuma","50u",85],
+["g203","Vaso polipapel 4oz","biopoly / 50u",150],
+["g204","Vaso polipapel 6oz","biopoly / 50u",290],
+["g205","Vaso corrugado 8oz","darnel / 25u",177.5],
+["g206","Vaso doble pared 8oz","biopoly / 25u",212.5],
+["g207","Vaso polipapel 8oz","biopoly / 50u",360],
+["g208","Vaso polipapel 8oz","darnel / 50u",135],
+["g209","Vaso polipapel 12oz","50u",470],
+["g210","Fajas para vasos 8oz","100u",350],
+["g211","Fajas para vasos 12oz","100u",350],
+["g212","Tapa vasos Darnel","50u",125],
+["g213","Tapa biopoly 4oz","50u",175],
+["g214","Tapa biopoly 6oz","50u",275],
+["g215","Tapa biopoly 8oz","50u",275],
+["g216","Tapa biopoly 12oz","50u",345],
+["g217","Vaso PET 9oz","50u",290],
+["g218","Vaso PET 12oz","50u",295],
+["g219","Separador p/cereales","50u",95],
+["g220","Tapa cruz","50u",75],
+["g221","Tapa domo","50u",160],
+["g222","Vaso biodegradable","180ml / 100u",100],
+["g223","Vaso biodegradable","330ml / 100u / caja x 1000u",100],
+["g224","Vaso biodegradable","550ml / 100u / caja x 1000u",155],
+["g225","Porta vasos x2","50u",420],
+["g226","Sorbitos polipapel","x 100",230],
+["g227","Sorbitos biopoly 8mm","x 200",480],
+["g228","Palo Brochette 10cm","200u",115],
+["g229","Palo Brochette 13cm","200u",198],
+["g230","Palo Brochette 15cm","200u",235],
+["g231","Palo Brochette 25cm","50u",60],
+["g232","Palitos de sushi","100u",156],
+["g233","Bowl natural c/t 34oz","50u",700],
+["g234","Bowl natural c/t 42oz","75u",1395],
+["g235","Bowl bagazo 32oz","50u",525],
+["g236","Tapa bowl bagazo 32oz","50u",445],
+["g237","Caja natural 26oz","50u",450],
+["g238","Contenedor bamboo c/t","12oz / 50u",600],
+["g239","Contenedor bamboo c/t","16oz / 50u",700],
+["g240","Dips transparentes 50ml","",90],
+["g241","Dips negro c/t 1oz","",200],
+["g242","Dips negro c/t 1,5oz","",295],
+["g243","Dips negro c/t 2oz","",320],
+["g244","Dips negro c/t 3oz","",500],
+["g245","Kit pote+tapa 145ml","paquete 25u",67.5],
+["g246","Kit pote+tapa 250ml","paquete 25u",127.5],
+["g247","Kit pote+tapa 350ml","paquete 25u",165],
+["g248","Kit pote+tapa 500ml","paquete 25u",291],
+["g249","Kit pote+tapa 750ml","paquete 25u",287.5],
+["g250","Kit pote+tapa 1000ml","pqte. 20u",300],
+["g251","Porta frita","",390],
+["g252","Pote ensalada 1000ml","G-682",12.8],
+["g253","Block notas","liso / rayado",27],
+["g254","Cinta adhesiva","fina",38],
+["g255","Cinta adhesiva","ancha",80],
+["g256","Cinta doble faz","",45],
+["g257","Cinta papel","",69],
+["g258","Cinta pato","",150],
+["g259","Clips","",55],
+["g260","Engrampadora","",240],
+["g261","Gomitas elásticas","",175],
+["g262","Grapas 26/6","",135],
+["g263","Hojas A4 blancas/nat.","",199],
+["g264","Lapicera","",13],
+["g265","Marcador","pizarra / permanente",58],
+["g266","Porta cinta","",375],
+["g267","Rollo balanza / etiquetas","",88],
+["g268","Rollo comanda térmico","",63],
+["g269","Rollo pos","",18],
+["g270","Sobre","carta / manilla",4],
+["g271","Tijera","",255],
+["g272","Tinta para impresora","",166],
+["g273","Tinta para sellos","",150],
+["g274","Trincheta","",100]
+];
+const LS = 'gp-prices-v1';
+const DB_URL = 'https://precios-gpacking-default-rtdb.firebaseio.com/gp.json';
+const store = {
+  items: {}, settings: {margin: 30}, history: [],
+  saveItem(item) {
+    this.items[item.id] = item;
+    this.persist(); renderList(); return true;
+  },
+  deleteItem(id) {
+    delete this.items[id];
+    this.persist(); renderList();
+  },
+  saveMeta() { this.persist(); renderHistory(); },
+  updatedAt: 0,
+  payload() {
+    return {items: this.items, settings: this.settings, history: this.history, updatedAt: this.updatedAt};
+  },
+  saveLocal() {
+    try { localStorage.setItem(LS, JSON.stringify(this.payload())); }
+    catch (e) { toast('No se pudo guardar en el dispositivo'); }
+  },
+  persist() {
+    this.updatedAt = Date.now();
+    this.saveLocal();
+    clearTimeout(this._pushT);
+    this._pushT = setTimeout(() => this.push(), 500);
+  },
+  async push() {
+    try {
+      const r = await fetch(DB_URL, {method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(this.payload())});
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+    } catch (e) { toast('Sin conexión: se sincroniza más tarde'); }
+  },
+  async pull() {
+    let d;
+    try {
+      const r = await fetch(DB_URL);
+      if (!r.ok) return;
+      d = await r.json();
+    } catch (e) { return; }
+    if (!d) { if (Object.keys(this.items).length) this.push(); return; }
+    const remote = d.updatedAt || 0;
+    if (remote > this.updatedAt) {
+      this.items = d.items || {};
+      this.settings = {...this.settings, ...(d.settings || {})};
+      this.history = d.history || [];
+      this.updatedAt = remote;
+      this.saveLocal();
+      renderList(); renderHistory();
+      $('#gMargin').value = this.settings.margin;
+    } else if (this.updatedAt > remote) {
+      this.push();
+    }
+  },
+  load() {
+    try {
+      const d = JSON.parse(localStorage.getItem(LS) || 'null');
+      if (d) { this.items = d.items || {}; this.settings = {...this.settings, ...(d.settings || {})}; this.history = d.history || []; this.updatedAt = d.updatedAt || 0; }
+    } catch (e) {}
+  },
+  // Lista de precios GPacking: solo si no hay datos locales ni remotos
+  seed() {
+    const m = this.settings.margin;
+    SEED.forEach(([id, name, detail, cost]) => {
+      this.items[id] = {id, name, detail, cost, margin: m, price: Math.round(cost * (1 + m / 100))};
+    });
+    this.updatedAt = 0;
+    this.saveLocal();
+  }
+};
+function addLogEntry(product, from, to) {
+  store.history.unshift({date: new Date().toISOString(), product, from, to});
+  store.history = store.history.slice(0, 200);
+}
+
+function renderList() {
+  const raw = $('#search').value.trim().toLowerCase();
+  const rows = Object.values(store.items)
+    .filter(it => !raw || (it.name + ' ' + it.detail).toLowerCase().includes(raw))
+    .sort((a, b) => a.name.localeCompare(b.name, 'es'));
+  $('#count').textContent = rows.length + ' productos';
+  renderPlan();
+  $('#list').innerHTML = rows.map(it => `
+    <div class="card">
+      <div class="row">
+        <div class="grow"><div class="name">${esc(it.name)}</div><div class="muted">${esc(it.detail)}</div></div>
+        <div class="price">$${fmt(it.price)}</div>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <label class="row" style="margin:0">Costo $ <input class="num" type="number" step="0.01" id="c-${it.id}" value="${it.cost}"></label>
+        <label class="row" style="margin:0">Margen % <input class="num" type="number" step="0.1" id="m-${it.id}" value="${it.margin}"></label>
+        <button class="btn" data-save="${it.id}">Guardar</button>
+        <button class="btn ghost" data-del="${it.id}">Borrar</button>
+      </div>
+    </div>`).join('') || '<div class="card muted">No hay productos todavía. Cargalos desde "Importar".</div>';
+}
+
+function renderHistory() {
+  $('#hist').innerHTML = store.history.length ? store.history.map(h => `
+    <div class="card"><div class="row">
+      <div class="grow"><div class="name">${esc(h.product)}</div><div class="muted">${new Date(h.date).toLocaleString('es-UY')}</div></div>
+      <div>${h.from == null ? 'Alta' : '$' + fmt(h.from) + ' → $' + fmt(h.to)}</div>
+    </div></div>`).join('') : '<div class="card muted">Sin cambios registrados.</div>';
+}
+
+// Productos: buscar, guardar costo/margen, borrar
+$('#search').addEventListener('input', renderList);
+$('#list').addEventListener('click', async e => {
+  const saveId = e.target.dataset.save;
+  if (saveId) {
+    const it = store.items[saveId]; if (!it) return;
+    const cost = parseFloat(document.getElementById('c-' + saveId).value);
+    const m = parseFloat(document.getElementById('m-' + saveId).value);
+    if (isNaN(cost) || cost < 0 || isNaN(m) || m < 0) return toast('Costo o margen no válidos');
+    const old = it.cost;
+    const u = {...it, cost, margin: m, price: calc(cost, m), updated: new Date().toISOString()};
+    store.saveItem(u);
+    if (old !== cost) { addLogEntry(it.name, old, cost); store.saveMeta(); }
+    toast('Guardado: ' + it.name + ' a $' + fmt(u.price));
+    return;
+  }
+  const id = e.target.dataset.del; if (!id) return;
+  const b = e.target;
+  if (!b.dataset.armed) {
+    b.dataset.armed = 1; b.textContent = 'Confirmar'; b.style.background = 'var(--warn)'; b.style.color = '#fff';
+    setTimeout(() => { if (b.isConnected) { delete b.dataset.armed; b.textContent = 'Borrar'; b.style.background = ''; b.style.color = ''; } }, 3000);
+    return;
+  }
+  store.deleteItem(id);
+});
+
+// Margen general
+$('#btnApplyAll').onclick = () => {
+  const m = parseFloat($('#gMargin').value);
+  if (isNaN(m) || m < 0) return toast('Poné un margen válido');
+  $('#confirmBox').classList.remove('hidden');
+};
+$('#btnCancelAll').onclick = () => $('#confirmBox').classList.add('hidden');
+$('#btnConfirmAll').onclick = () => {
+  const m = parseFloat($('#gMargin').value);
+  const now = new Date().toISOString();
+  store.settings.margin = m;
+  const items = Object.values(store.items);
+  items.forEach(it => { store.items[it.id] = {...it, margin: m, price: calc(it.cost, m), updated: now}; });
+  store.saveMeta();
+  renderList();
+  $('#confirmBox').classList.add('hidden');
+  toast('Margen aplicado a ' + items.length + ' productos');
+};
+
+// Alta manual
+$('#btnAdd').onclick = () => $('#addBox').classList.toggle('hidden');
+$('#btnSaveNew').onclick = () => {
+  const name = $('#nName').value.trim();
+  const cost = parseFloat($('#nCost').value);
+  const m = parseFloat($('#nMargin').value || store.settings.margin);
+  if (!name || isNaN(cost) || cost <= 0) return toast('Falta el nombre o el costo');
+  const it = {id: uid(), name, detail: $('#nDetail').value.trim(), cost, margin: m, price: calc(cost, m), updated: new Date().toISOString()};
+  addLogEntry(name, null, cost);
+  store.saveItem(it);
+  store.saveMeta();
+  ['#nName', '#nDetail', '#nCost', '#nMargin'].forEach(s => $(s).value = '');
+  toast('Producto agregado');
+};
+
+// Importar: pegar texto
+let pending = [];
+function bestMatch(p) {
+  const w = norm(p.name + ' ' + p.detail);
+  let best = null, bs = 0;
+  for (const it of Object.values(store.items)) {
+    const iw = norm(it.name + ' ' + it.detail);
+    if (!iw.length) continue;
+    const score = iw.filter(x => w.includes(x)).length / iw.length;
+    if (score > bs) { bs = score; best = it; }
+  }
+  return bs >= 0.6 ? best : null;
+}
+function buildReview(parsed) {
+  pending = parsed.map(p => {
+    const best = bestMatch(p);
+    return {...p, include: true, target: best ? best.id : 'new'};
+  });
+  renderReview();
+}
+function optsFor(sel) {
+  return Object.values(store.items)
+    .sort((a, b) => a.name.localeCompare(b.name, 'es'))
+    .map(it => `<option value="${it.id}" ${it.id === sel ? 'selected' : ''}>${esc(it.name)} ${esc(it.detail)} (hoy $${fmt(it.cost)})</option>`).join('');
+}
+function renderReview() {
+  const box = $('#review');
+  if (!pending.length) { box.innerHTML = ''; return; }
+  box.innerHTML = `<div class="card"><div class="name">Revisión (${pending.length} renglones)</div>
+    <p class="muted">Confirmá a qué producto corresponde cada línea y su costo. Destildá lo que no quieras cargar.</p></div>` +
+    pending.map((p, i) => `
+    <div class="card">
+      <label class="row" style="margin:0 0 8px;color:var(--ink)"><input type="checkbox" data-i="${i}" data-k="include" ${p.include ? 'checked' : ''}>
+        <span class="grow">${esc(p.name)} ${esc(p.detail)}</span></label>
+      <label class="row" style="margin:0">Costo $ <input class="num" type="number" step="0.01" value="${p.cost}" data-i="${i}" data-k="cost"></label>
+      <select data-i="${i}" data-k="target" style="margin-top:8px">
+        <option value="new" ${p.target === 'new' ? 'selected' : ''}>+ Nuevo producto</option>${optsFor(p.target)}
+      </select>
+    </div>`).join('') +
+    `<button class="btn" id="btnApplyReview" style="width:100%">Guardar revisión</button>`;
+}
+$('#review').addEventListener('change', e => {
+  const i = e.target.dataset.i, k = e.target.dataset.k; if (i === undefined || !k) return;
+  const p = pending[i]; if (!p) return;
+  if (k === 'include') p.include = e.target.checked;
+  if (k === 'cost') p.cost = parseFloat(e.target.value);
+  if (k === 'target') p.target = e.target.value;
+});
+$('#review').addEventListener('click', e => { if (e.target.id === 'btnApplyReview') applyReview(); });
+function applyReview() {
+  const now = new Date().toISOString();
+  const rows = pending.filter(p => p.include && p.cost > 0);
+  if (!rows.length) return toast('No hay líneas para guardar');
+  for (const p of rows) {
+    if (p.target === 'new') {
+      const m = store.settings.margin;
+      addLogEntry(p.name, null, p.cost);
+      store.saveItem({id: uid(), name: p.name, detail: p.detail || '', cost: p.cost, margin: m, price: calc(p.cost, m), updated: now});
+    } else {
+      const it = store.items[p.target]; if (!it) continue;
+      const old = it.cost;
+      if (old !== p.cost) addLogEntry(it.name, old, p.cost);
+      store.saveItem({...it, cost: p.cost, price: calc(p.cost, it.margin), updated: now});
+    }
+  }
+  store.saveMeta();
+  pending = []; $('#review').innerHTML = ''; $('#paste').value = ''; setOcr('');
+  toast(rows.length + ' productos guardados');
+}
+$('#btnParse').onclick = () => {
+  const parsed = [];
+  for (const l of $('#paste').value.split('\n').map(x => x.trim()).filter(Boolean)) {
+    // Acepta "Producto;Detalle;Costo" y también el CSV de la Plantilla (Producto;Detalle;Costo;Margen %;Precio)
+    const p = l.split(/;|\t/).map(s => s.trim().replace(/^"|"$/g, ''));
+    if (p.length < 2) continue;
+    const cost = p.length >= 5 ? parseNum(p[2]) : parseNum(p[p.length - 1]);
+    const name = p[0], detail = p.length >= 3 ? p[1] : '';
+    if (!name || isNaN(cost) || cost <= 0) continue;
+    parsed.push({name, detail, cost});
+  }
+  if (!parsed.length) return toast('No encontré líneas válidas');
+  buildReview(parsed);
+};
+
+// Importar: foto con OCR (necesita internet la primera vez para bajar el lector)
+function loadScript(src) {
+  return new Promise((res, rej) => {
+    if (window.Tesseract) return res();
+    const s = document.createElement('script');
+    s.src = src; s.onload = res; s.onerror = () => rej(new Error('no se pudo cargar el lector de texto'));
+    document.head.appendChild(s);
+  });
+}
+async function runOcr(file) {
+  await loadScript('https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js');
+  const {data} = await Tesseract.recognize(file, 'spa', {
+    langPath: 'https://cdn.jsdelivr.net/npm/@tesseract.js-data/spa/4.0.0_best_int',
+    logger: m => { if (m.status === 'recognizing text') setOcr('Leyendo… ' + Math.round(m.progress * 100) + '%'); }
+  });
+  return data.text;
+}
+$('#photo').onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  setOcr('Leyendo la foto… puede tardar un poco');
+  try {
+    const text = await runOcr(f);
+    const parsed = [];
+    for (const raw of text.split('\n')) {
+      const m = raw.trim().match(/^(.*?[A-Za-zÁÉÍÓÚáéíóúñÑ].*?)[\s|:.]*\$?\s*(\d[\d.]*(?:,\d{1,2})?)\s*$/);
+      if (!m) continue;
+      const name = m[1].replace(/\|/g, ' ').replace(/\s+/g, ' ').trim();
+      const cost = parseNum(m[2]);
+      if (name.length < 3 || !(cost > 0)) continue;
+      parsed.push({name, detail: '', cost});
+    }
+    setOcr(parsed.length ? parsed.length + ' renglones detectados. Revisalos abajo.' : 'No detecté precios. Probá con otra foto o pegá el texto.');
+    buildReview(parsed);
+  } catch (err) {
+    setOcr('No se pudo leer la foto (' + err.message + '). Pegá el texto en su lugar.');
+  }
+};
+
+// Plantilla de precios: tabla de todos los ítems, descarga CSV y copiado
+let planRows = [];
+function renderPlan() {
+  const raw = $('#psearch').value.trim().toLowerCase();
+  planRows = Object.values(store.items)
+    .filter(it => !raw || (it.name + ' ' + it.detail).toLowerCase().includes(raw))
+    .sort((a, b) => a.name.localeCompare(b.name, 'es'));
+  $('#pcount').textContent = planRows.length + ' de ' + Object.keys(store.items).length + ' ítems';
+  $('#ptable').innerHTML = '<tr><th>Producto</th><th>Detalle</th><th>Costo</th><th>Margen %</th><th>Precio</th></tr>' +
+    (planRows.map(it => `<tr><td>${esc(it.name)}</td><td>${esc(it.detail)}</td><td>$${fmt(it.cost)}</td><td>${fmt(it.margin)}</td><td><b>$${fmt(it.price)}</b></td></tr>`).join('') ||
+    '<tr><td class="muted" colspan="5">Sin ítems todavía.</td></tr>');
+}
+function planCsv() {
+  const q = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
+  const lines = [['Producto', 'Detalle', 'Costo', 'Margen %', 'Precio'].join(';')];
+  planRows.forEach(it => lines.push([q(it.name), q(it.detail), String(it.cost).replace('.', ','), String(it.margin).replace('.', ','), it.price].join(';')));
+  return '﻿' + lines.join('\n');
+}
+$('#psearch').addEventListener('input', renderPlan);
+$('#btnCsv').onclick = () => {
+  if (!planRows.length) return toast('No hay ítems para descargar');
+  if (window.AndroidBridge) return AndroidBridge.saveCsv('plantilla-precios.csv', planCsv());
+  // Navegador de computadora: descarga directa del archivo
+  try {
+    const blob = new Blob([planCsv()], {type: 'text/csv;charset=utf-8'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = 'plantilla-precios.csv';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    toast('Archivo descargado');
+  } catch (e) { toast('No se pudo descargar. Usá Copiar.'); }
+};
+$('#btnCopy').onclick = async () => {
+  const txt = planCsv().replace('﻿', '');
+  if (window.AndroidBridge) return AndroidBridge.copy(txt);
+  try { await navigator.clipboard.writeText(txt); toast('Copiado: pegalo en Excel o Sheets'); }
+  catch (e) { toast('No se pudo copiar'); }
+};
+
+// Navegación
+document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('nav button').forEach(x => x.classList.toggle('on', x === b));
+  document.querySelectorAll('section[data-view]').forEach(s => s.classList.toggle('hidden', s.dataset.view !== b.dataset.go));
+});
+
+// Arranque
+async function boot() {
+  store.load();
+  await store.pull();
+  if (!Object.keys(store.items).length) { store.seed(); store.push(); }
+  renderList(); renderHistory();
+  $('#gMargin').value = store.settings.margin;
+  setInterval(() => store.pull(), 20000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) store.pull(); });
+}
+boot();
+</script>
+</body>
+</html>
